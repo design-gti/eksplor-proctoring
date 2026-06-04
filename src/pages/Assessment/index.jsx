@@ -1,41 +1,45 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box, Card, CardContent, Typography, Button, Avatar, Alert, Chip,
-  CircularProgress, Stack, Fab, LinearProgress, TextField
+  CircularProgress, Stack, Fab, LinearProgress, TextField, Dialog,
+  DialogContent, DialogTitle
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import {
   Face, Fullscreen, FullscreenExit, Help, Quiz, Security,
-  CheckCircle, Cancel, Logout, Warning, PhoneAndroid, Person
+  CheckCircle, Cancel, Logout, Warning, PhoneAndroid, Person,
+  ScreenShare, StopScreenShare, FiberManualRecord, PhotoCamera, Info
 } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { useTheme } from '@mui/material/styles'
 import { useNavigate } from 'react-router-dom'
-import { QRCodeSVG } from 'qrcode.react'
 import useFullscreen from '../../hooks/useFullscreen'
 import useTabSwitch from '../../hooks/useTabSwitch'
-import useScreenShare from '../../hooks/useScreenShare'
 import useMultipleMonitor from '../../hooks/useMultipleMonitor'
 import useFaceDetection from '../../hooks/useFaceDetection'
 import usePhoneDetection from '../../hooks/usePhoneDetection'
 import useSecondaryCamera from '../../hooks/useSecondaryCamera'
+import useScreenRecording from '../../hooks/useScreenRecording'
 
 const keyframes = `
-  @keyframes pulse {
-    0%,100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-  }
-  @keyframes attention {
-    0%,100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.8; }
-  }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+  @keyframes attention { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:0.8} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 `
+
+// Step enum untuk flow sebelum mulai
+const STEP_RULES = 'rules'       // halaman aturan + kamera status
+const STEP_SCREEN = 'screen'     // share screen + recording
+const STEP_ACTIVE = 'active'     // assessment sedang berjalan
 
 export default function Assessment() {
   const theme = useTheme()
   const navigate = useNavigate()
-  const [isStarted, setIsStarted] = useState(false)
+  const [step, setStep] = useState(STEP_RULES)
   const [answers, setAnswers] = useState({ q1: '', q2: '' })
+  const [captureCount, setCaptureCount] = useState(0)
+  const captureIntervalRef = useRef(null)
+  const canvasRef = useRef(document.createElement('canvas'))
 
   // Timer
   const [timeLeft, setTimeLeft] = useState(60 * 60)
@@ -43,27 +47,32 @@ export default function Assessment() {
   const timerRef = useRef(null)
 
   // Proctoring hooks
-  const { isFullscreen, fullscreenExitCount, requestFullscreen, exitFullscreen } = useFullscreen()
+  const { isFullscreen, requestFullscreen, exitFullscreen } = useFullscreen()
   const { tabSwitchCount } = useTabSwitch()
-  const { isScreenShared } = useScreenShare()
   const { hasMultipleMonitors } = useMultipleMonitor()
   const {
     faceDetected, faceCount, hasMultipleFaces, loading: faceLoading,
     setFaceDetected, setFaceCount, setHasMultipleFaces, setLoading: setFaceLoading
   } = useFaceDetection({ enabled: true })
-  const { phoneDetected, setPhoneDetected } = usePhoneDetection({ enabled: true })
+  const { phoneDetected } = usePhoneDetection({ enabled: true })
 
-  // Secondary camera (HP)
+  // Screen recording
   const {
-    qrUrl: hpQrUrl, connectionStatus: hpStatus, remoteVideoRef: hpVideoRef,
-    startListening: hpStartListening, disconnect: hpDisconnect,
-    simulateConnect: hpSimulateConnect, simulateDisconnect: hpSimulateDisconnect,
+    status: screenStatus, errorMessage: screenError, isRecording,
+    videoRef: screenVideoRef, startRecording, stopAll: stopScreen,
+  } = useScreenRecording({ captureIntervalSec: 30 })
+
+  const screenActive = screenStatus === 'active'
+
+  // Secondary camera
+  const {
+    connectionStatus: hpStatus, remoteVideoRef: hpVideoRef,
   } = useSecondaryCamera({ enabled: true })
   const hpConnected = hpStatus === 'connected'
 
-  // Start timer when assessment starts
+  // ── Timer ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isStarted) {
+    if (step === STEP_ACTIVE) {
       const total = 60 * 60
       timerRef.current = setInterval(() => {
         setTimeLeft(t => {
@@ -74,53 +83,68 @@ export default function Assessment() {
       }, 1000)
     }
     return () => clearInterval(timerRef.current)
-  }, [isStarted])
+  }, [step])
 
-  // Prevent close/refresh during assessment
+  // ── Periodic screen capture during active assessment ───────────────────────
   useEffect(() => {
-    if (!isStarted) return
+    if (step !== STEP_ACTIVE || !screenActive) return
+    const doCapture = () => {
+      const video = screenVideoRef.current
+      if (!video || video.readyState < 2) return
+      const canvas = canvasRef.current
+      canvas.width = video.videoWidth || 1280
+      canvas.height = video.videoHeight || 720
+      canvas.getContext('2d').drawImage(video, 0, 0)
+      setCaptureCount(n => n + 1)
+      // Production: upload canvas.toDataURL('image/jpeg', 0.7) to backend
+    }
+    setTimeout(doCapture, 1000)
+    captureIntervalRef.current = setInterval(doCapture, 30_000)
+    return () => clearInterval(captureIntervalRef.current)
+  }, [step, screenActive])
+
+  // ── Prevent refresh during assessment ─────────────────────────────────────
+  useEffect(() => {
+    if (step !== STEP_ACTIVE) return
     const handler = e => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-  }, [isStarted])
+  }, [step])
 
   function formatTime(s) {
     const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
   }
 
-  const canStart = isFullscreen && !faceLoading && faceDetected && !hasMultipleFaces && !phoneDetected
-
-  function handleStart() {
-    navigate('/share-screen')
-  }
+  const canProceedToScreen = isFullscreen && !faceLoading && faceDetected && !hasMultipleFaces && !phoneDetected
+  const canStartAssessment = screenActive
 
   function handleExit() {
-    const confirmed = window.confirm('Apakah Anda yakin ingin keluar dari assessment? Semua progres Anda akan hilang.')
-    if (confirmed) {
+    const ok = window.confirm('Keluar dari assessment? Semua progres akan hilang.')
+    if (ok) {
       exitFullscreen()
       clearInterval(timerRef.current)
-      setIsStarted(false)
+      clearInterval(captureIntervalRef.current)
+      stopScreen()
+      setStep(STEP_RULES)
     }
   }
 
-  // Violations to show as toasts when started
+  // Violations (shown as toasts in active state)
   const violations = [
     !isFullscreen && { key: 'fs', severity: 'error', message: 'Mode Fullscreen tidak aktif!' },
     tabSwitchCount > 0 && { key: 'tab', severity: 'warning', message: `Perpindahan Tab Terdeteksi (${tabSwitchCount}x)` },
-    isScreenShared && { key: 'ss', severity: 'error', message: 'Screen Sharing Terdeteksi!' },
     hasMultipleMonitors && { key: 'mm', severity: 'error', message: 'Multiple Monitor Terdeteksi!' },
     !faceDetected && { key: 'face', severity: 'error', message: 'Wajah Tidak Terdeteksi' },
     hasMultipleFaces && { key: 'mf', severity: 'error', message: `Terdeteksi ${faceCount} wajah. Hanya boleh ada 1 wajah.` },
-    phoneDetected && { key: 'phone', severity: 'error', message: 'Ponsel Terdeteksi! Harap jauhkan ponsel.' },
+    phoneDetected && { key: 'phone', severity: 'error', message: 'Ponsel Terdeteksi!' },
+    !screenActive && { key: 'screen', severity: 'error', message: 'Screen Recording Berhenti!' },
   ].filter(Boolean)
 
   const bgGradient = `
     radial-gradient(circle at top right, ${alpha(theme.palette.primary.light, 0.2)} 0%, transparent 60%),
     radial-gradient(circle at bottom left, ${alpha(theme.palette.secondary.light, 0.2)} 0%, transparent 60%)
   `
-
   const cardStyle = {
     background: 'rgba(255,255,255,0.95)',
     backdropFilter: 'blur(12px)',
@@ -134,11 +158,10 @@ export default function Assessment() {
 
       <Box sx={{ maxWidth: 'lg', mx: 'auto' }}>
 
-        {/* ── PRE-ASSESSMENT STATE ── */}
-        {!isStarted && (
+        {/* ══ STEP 1: RULES + CAMERA STATUS ══════════════════════════════════ */}
+        {step === STEP_RULES && (
           <Card sx={{ ...cardStyle, p: { xs: 2, md: 4 } }}>
             <CardContent>
-              {/* Header */}
               <Box sx={{ textAlign: 'center', mb: 4 }}>
                 <Typography variant="h4" fontWeight={700} sx={{
                   background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
@@ -151,9 +174,7 @@ export default function Assessment() {
                 </Typography>
               </Box>
 
-              {/* Two columns */}
               <Grid container spacing={3} sx={{ mb: 4 }} alignItems="flex-start">
-
                 {/* Left: Rules */}
                 <Grid size={{ xs: 12, md: 6 }}>
                   <Card variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
@@ -166,7 +187,7 @@ export default function Assessment() {
                     {[
                       { icon: <Fullscreen />, title: 'Mode Fullscreen Wajib', desc: 'Assessment harus dikerjakan dalam mode fullscreen' },
                       { icon: <Quiz />, title: 'Dilarang Berpindah Tab', desc: 'Anda tidak diperbolehkan berpindah tab saat assessment berlangsung' },
-                      { icon: <Fullscreen />, title: 'Dilarang Melakukan Screen Sharing', desc: 'Anda tidak diperbolehkan melakukan screen sharing' },
+                      { icon: <ScreenShare />, title: 'Share Screen Wajib', desc: 'Layar Anda akan direkam selama assessment berlangsung' },
                       { icon: <Person />, title: 'Dilarang Menggunakan Multiple Monitor', desc: 'Hanya boleh menggunakan satu monitor' },
                       { icon: <Face />, title: 'Wajah Harus Terdeteksi', desc: 'Wajah Anda harus terdeteksi dan hanya boleh ada satu wajah' },
                       { icon: <PhoneAndroid />, title: 'Dilarang Menggunakan Ponsel', desc: 'Ponsel dan perangkat elektronik lainnya tidak boleh terdeteksi kamera' },
@@ -197,79 +218,59 @@ export default function Assessment() {
                       </Avatar>
                       <Typography fontWeight={700} color="white">Status Kamera</Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: 3 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 3, px: 3 }}>
                       {faceLoading ? (
-                        <CircularProgress size={60} thickness={5} sx={{ strokeLinecap: 'round' }} />
+                        <CircularProgress size={60} thickness={5} />
                       ) : faceDetected ? (
                         <>
-                          <Avatar sx={{
-                            width: 70, height: 70, bgcolor: alpha(theme.palette.success.main, 0.9),
-                            animation: 'pulse 2s infinite'
-                          }}>
+                          <Avatar sx={{ width: 70, height: 70, bgcolor: alpha(theme.palette.success.main, 0.9), animation: 'pulse 2s infinite' }}>
                             <Face sx={{ fontSize: 36, color: 'white' }} />
                           </Avatar>
                           <Typography variant="h6" fontWeight={700} color="success.main">Wajah Terdeteksi</Typography>
-                          {hasMultipleFaces && (
-                            <Alert severity="error">Terdeteksi {faceCount} wajah. Hanya boleh ada 1 wajah.</Alert>
-                          )}
+                          {hasMultipleFaces && <Alert severity="error">Terdeteksi {faceCount} wajah. Hanya boleh ada 1 wajah.</Alert>}
                         </>
                       ) : (
                         <>
-                          <Avatar sx={{
-                            width: 70, height: 70, bgcolor: alpha(theme.palette.error.main, 0.9),
-                            animation: 'attention 1.5s infinite'
-                          }}>
+                          <Avatar sx={{ width: 70, height: 70, bgcolor: alpha(theme.palette.error.main, 0.9), animation: 'attention 1.5s infinite' }}>
                             <Face sx={{ fontSize: 36, color: 'white' }} />
                           </Avatar>
                           <Typography variant="h6" fontWeight={700} color="error.main">Wajah Tidak Terdeteksi</Typography>
-                          <Alert severity="warning" variant="outlined">
-                            Posisikan wajah Anda dengan jelas di depan kamera
-                          </Alert>
+                          <Alert severity="warning" variant="outlined">Posisikan wajah Anda dengan jelas di depan kamera</Alert>
                         </>
                       )}
-
                       {phoneDetected && (
                         <Alert severity="error" icon={<PhoneAndroid />}>
                           <Typography variant="body2" fontWeight={600}>Ponsel Terdeteksi!</Typography>
-                          <Typography variant="caption">Harap jauhkan ponsel dan perangkat elektronik lainnya</Typography>
+                          <Typography variant="caption">Harap jauhkan ponsel dari area ujian</Typography>
                         </Alert>
                       )}
-
                     </Box>
                   </Card>
-
                 </Grid>
               </Grid>
 
-              {/* Action buttons */}
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <Stack direction="row" spacing={2}>
-                  <Button
-                    variant="outlined" color="secondary" size="large"
+                  <Button variant="outlined" color="secondary" size="large"
                     startIcon={isFullscreen ? <FullscreenExit /> : <Fullscreen />}
                     onClick={isFullscreen ? exitFullscreen : requestFullscreen}
-                    sx={{ py: 1.5, px: 4, '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 }, transition: 'all 0.2s' }}>
+                    sx={{ py: 1.5, px: 4, transition: 'all 0.2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 } }}>
                     {isFullscreen ? 'Keluar Fullscreen' : 'Aktifkan Fullscreen'}
                   </Button>
-                  <Button
-                    variant="contained" color="primary" size="large"
-                    startIcon={<Quiz />}
-                    disabled={!canStart}
-                    onClick={handleStart}
-                    sx={{ py: 1.5, px: 6, '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 }, transition: 'all 0.2s', '&.Mui-disabled': { bgcolor: 'grey.400' } }}>
+                  <Button variant="contained" color="primary" size="large"
+                    startIcon={<ScreenShare />}
+                    disabled={!canProceedToScreen}
+                    onClick={() => setStep(STEP_SCREEN)}
+                    sx={{ py: 1.5, px: 6, transition: 'all 0.2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 }, '&.Mui-disabled': { bgcolor: 'grey.400' } }}>
                     Mulai Assessment
                   </Button>
                 </Stack>
-
-                {(!faceDetected || hasMultipleFaces || phoneDetected || !isFullscreen) && (
+                {!canProceedToScreen && (
                   <Alert severity="warning" sx={{ width: 'fit-content', borderRadius: 2 }}>
-                    {!faceDetected
-                      ? 'Wajah Anda harus terdeteksi untuk memulai assessment'
-                      : hasMultipleFaces
-                        ? 'Hanya boleh ada satu wajah yang terdeteksi'
-                        : phoneDetected
-                          ? 'Ponsel terdeteksi. Harap jauhkan ponsel dari area ujian'
-                          : 'Aktifkan fullscreen untuk memulai assessment'}
+                    {!isFullscreen ? 'Aktifkan fullscreen untuk melanjutkan'
+                      : !faceDetected ? 'Wajah Anda harus terdeteksi untuk memulai assessment'
+                      : hasMultipleFaces ? 'Hanya boleh ada satu wajah yang terdeteksi'
+                      : 'Ponsel terdeteksi. Harap jauhkan ponsel dari area ujian'}
                   </Alert>
                 )}
               </Box>
@@ -277,8 +278,113 @@ export default function Assessment() {
           </Card>
         )}
 
-        {/* ── ASSESSMENT ACTIVE STATE ── */}
-        {isStarted && (
+        {/* ══ STEP 2: SHARE SCREEN + RECORDING ═══════════════════════════════ */}
+        {step === STEP_SCREEN && (
+          <Card sx={{ ...cardStyle, maxWidth: 720, mx: 'auto', p: { xs: 2, md: 4 } }}>
+            <CardContent>
+              <Box sx={{ textAlign: 'center', mb: 3 }}>
+                <Avatar sx={{ mx: 'auto', mb: 2, width: 56, height: 56, bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main' }}>
+                  <ScreenShare sx={{ fontSize: 28 }} />
+                </Avatar>
+                <Typography variant="h5" fontWeight={700} gutterBottom>Share Screen Recording</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Layar Anda akan direkam selama assessment berlangsung sebagai bagian dari proses pengawasan.
+                </Typography>
+              </Box>
+
+              <Alert severity="info" icon={<Info />} sx={{ mb: 3, borderRadius: 2 }}>
+                Saat dialog muncul, pilih <strong>"Seluruh Layar" (Entire Screen)</strong> — bukan tab atau jendela tertentu. Pastikan seluruh layar Anda dibagikan.
+              </Alert>
+
+              {/* Screen preview */}
+              <Box sx={{
+                width: '100%', aspectRatio: '16/9', maxHeight: 260, bgcolor: '#0d0d0d',
+                borderRadius: 2, overflow: 'hidden', mb: 3, position: 'relative',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '2px solid', borderColor: screenActive ? 'success.main' : 'grey.600',
+                transition: 'border-color 0.3s',
+              }}>
+                <video ref={screenVideoRef} autoPlay muted playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: screenActive ? 'block' : 'none' }} />
+                {!screenActive && (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <ScreenShare sx={{ fontSize: 48, color: 'grey.600', mb: 1 }} />
+                    <Typography variant="body2" color="grey.500">Preview layar akan muncul setelah share screen diaktifkan</Typography>
+                  </Box>
+                )}
+                {screenActive && (
+                  <Box sx={{
+                    position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 0.5,
+                    bgcolor: 'rgba(0,0,0,0.7)', borderRadius: 1, px: 1, py: 0.5
+                  }}>
+                    <FiberManualRecord sx={{ color: '#ef4444', fontSize: 12, animation: 'blink 1.5s infinite' }} />
+                    <Typography variant="caption" color="white" fontWeight={700} sx={{ fontSize: 11 }}>REC</Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Status & actions */}
+              {screenStatus === 'idle' && (
+                <Stack spacing={2} alignItems="flex-start">
+                  <Button variant="contained" size="large" startIcon={<ScreenShare />}
+                    onClick={startRecording} sx={{ borderRadius: 2, py: 1.5, px: 4 }}>
+                    Bagikan Layar & Mulai Recording
+                  </Button>
+                </Stack>
+              )}
+
+              {screenStatus === 'requesting' && (
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <CircularProgress size={22} />
+                  <Typography variant="body2" color="text.secondary">Menunggu izin screen sharing...</Typography>
+                </Stack>
+              )}
+
+              {screenActive && (
+                <Stack spacing={2}>
+                  <Chip icon={<CheckCircle />} label="Screen sharing aktif — Recording berjalan" color="success" sx={{ alignSelf: 'flex-start', fontWeight: 700 }} />
+                  <Stack direction="row" spacing={2}>
+                    <Button variant="contained" color="primary" size="large" startIcon={<Quiz />}
+                      onClick={() => setStep(STEP_ACTIVE)}
+                      sx={{ borderRadius: 2, py: 1.5, px: 4, fontWeight: 700 }}>
+                      Lanjutkan ke Soal
+                    </Button>
+                    <Button variant="outlined" color="error" size="small" startIcon={<StopScreenShare />} onClick={stopScreen}>
+                      Batalkan
+                    </Button>
+                  </Stack>
+                </Stack>
+              )}
+
+              {screenStatus === 'stopped' && (
+                <Stack spacing={1}>
+                  <Alert severity="warning">Screen sharing dihentikan. Aktifkan kembali untuk melanjutkan.</Alert>
+                  <Button variant="contained" startIcon={<ScreenShare />} onClick={startRecording} sx={{ alignSelf: 'flex-start', borderRadius: 2 }}>
+                    Aktifkan Ulang
+                  </Button>
+                </Stack>
+              )}
+
+              {screenStatus === 'error' && (
+                <Stack spacing={1}>
+                  <Alert severity="error">{screenError || 'Gagal memulai screen sharing.'}</Alert>
+                  <Button variant="outlined" startIcon={<ScreenShare />} onClick={startRecording} sx={{ alignSelf: 'flex-start' }}>
+                    Coba Lagi
+                  </Button>
+                </Stack>
+              )}
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Button variant="text" size="small" color="secondary" onClick={() => { stopScreen(); setStep(STEP_RULES) }}>
+                  ← Kembali ke Aturan
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ══ STEP 3: ACTIVE ASSESSMENT ═══════════════════════════════════════ */}
+        {step === STEP_ACTIVE && (
           <Stack spacing={3}>
             {/* Header bar */}
             <Card sx={{ ...cardStyle, borderRadius: 3 }}>
@@ -293,7 +399,19 @@ export default function Assessment() {
                       </Typography>
                     </Box>
                   </Box>
-                  <Box sx={{ textAlign: 'right', minWidth: 200 }}>
+
+                  {/* REC indicator */}
+                  {screenActive && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: alpha('#ef4444', 0.1), borderRadius: 2, px: 2, py: 1, border: '1px solid', borderColor: alpha('#ef4444', 0.3) }}>
+                      <FiberManualRecord sx={{ color: '#ef4444', fontSize: 14, animation: 'blink 1.5s infinite' }} />
+                      <Typography variant="caption" fontWeight={700} color="error.main">RECORDING</Typography>
+                      {captureCount > 0 && (
+                        <Chip label={`${captureCount} screenshot`} size="small" color="error" variant="outlined" sx={{ height: 20, fontSize: 10 }} />
+                      )}
+                    </Box>
+                  )}
+
+                  <Box sx={{ textAlign: 'right', minWidth: 180 }}>
                     <Typography variant="caption" color="text.secondary">Progress Assessment</Typography>
                     <Typography variant="body2" fontWeight={600}>{Math.round(progress)}%</Typography>
                     <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mt: 0.5 }} />
@@ -312,12 +430,12 @@ export default function Assessment() {
                 <Grid container spacing={1.5} sx={{ mb: 2 }}>
                   {[
                     { label: isFullscreen ? 'Mode Fullscreen Aktif' : 'Mode Fullscreen Tidak Aktif', ok: isFullscreen, icon: <Fullscreen /> },
-                    { label: tabSwitchCount === 0 ? 'Tidak Ada Perpindahan Tab' : `Perpindahan Tab Terdeteksi (${tabSwitchCount}x)`, ok: tabSwitchCount === 0, icon: <Quiz /> },
-                    { label: !isScreenShared ? 'Tidak Ada Screen Sharing' : 'Screen Sharing Terdeteksi', ok: !isScreenShared, icon: <Fullscreen /> },
+                    { label: tabSwitchCount === 0 ? 'Tidak Ada Perpindahan Tab' : `Perpindahan Tab (${tabSwitchCount}x)`, ok: tabSwitchCount === 0, icon: <Quiz /> },
+                    { label: screenActive ? 'Screen Recording Aktif' : 'Screen Recording Berhenti', ok: screenActive, icon: <ScreenShare /> },
                     { label: !hasMultipleMonitors ? 'Hanya Satu Monitor' : 'Multiple Monitor Terdeteksi', ok: !hasMultipleMonitors, icon: <Person /> },
                     { label: faceDetected && !hasMultipleFaces ? 'Satu Wajah Terdeteksi' : hasMultipleFaces ? `Terdeteksi ${faceCount} Wajah` : 'Wajah Tidak Terdeteksi', ok: faceDetected && !hasMultipleFaces, icon: <Face /> },
                     { label: !phoneDetected ? 'Tidak Ada Ponsel' : 'Ponsel Terdeteksi', ok: !phoneDetected, icon: <PhoneAndroid /> },
-                    { label: hpConnected ? 'Kamera HP Aktif' : 'Kamera HP Tidak Terhubung', ok: hpConnected, icon: <PhoneAndroid /> },
+                    { label: hpConnected ? 'Kamera HP Aktif' : 'Kamera HP Tidak Terhubung', ok: hpConnected, icon: <PhotoCamera /> },
                   ].map((item, i) => (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
                       <Box sx={{
@@ -356,12 +474,10 @@ export default function Assessment() {
                     <Box key={soal.key}>
                       <Typography variant="h6" fontWeight={700} gutterBottom>Soal {i + 1}</Typography>
                       <Typography variant="body1" sx={{ mb: 2 }}>{soal.q}</Typography>
-                      <TextField
-                        multiline rows={6} fullWidth variant="outlined" placeholder="Tuliskan jawaban Anda di sini..."
+                      <TextField multiline rows={6} fullWidth variant="outlined" placeholder="Tuliskan jawaban Anda di sini..."
                         value={answers[soal.key]}
                         onChange={e => setAnswers(a => ({ ...a, [soal.key]: e.target.value }))}
-                        sx={{ bgcolor: 'white' }}
-                      />
+                        sx={{ bgcolor: 'white' }} />
                     </Box>
                   ))}
                 </Stack>
@@ -376,21 +492,15 @@ export default function Assessment() {
         )}
       </Box>
 
-      {/* HP Camera PIP — shown during active assessment when connected */}
-      {isStarted && hpConnected && (
+      {/* HP Camera PIP */}
+      {step === STEP_ACTIVE && hpConnected && (
         <Box sx={{
           position: 'fixed', bottom: 80, left: 24, zIndex: 999,
-          borderRadius: 2, overflow: 'hidden',
-          border: '2px solid', borderColor: 'success.main',
+          borderRadius: 2, overflow: 'hidden', border: '2px solid', borderColor: 'success.main',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
         }}>
-          <video
-            ref={hpVideoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{ width: 160, height: 90, objectFit: 'cover', display: 'block' }}
-          />
+          <video ref={hpVideoRef} autoPlay muted playsInline
+            style={{ width: 160, height: 90, objectFit: 'cover', display: 'block' }} />
           <Box sx={{ position: 'absolute', top: 4, left: 4 }}>
             <Chip label="Kamera HP" size="small" color="success" sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
           </Box>
@@ -406,9 +516,9 @@ export default function Assessment() {
         <Help />
       </Fab>
 
-      {/* Violation toasts */}
-      {isStarted && violations.length > 0 && (
-        <Box sx={{ position: 'fixed', top: 24, right: 24, maxWidth: 380, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {/* Violation toasts — only during active assessment */}
+      {step === STEP_ACTIVE && violations.length > 0 && (
+        <Box sx={{ position: 'fixed', top: 80, right: 24, maxWidth: 380, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {violations.map(v => (
             <Alert key={v.key} severity={v.severity} variant="filled" icon={<Warning />}>
               {v.message}
