@@ -93,7 +93,7 @@ export default function Assessment() {
   const canStart = isFullscreen && !faceLoading && faceDetected && !hasMultipleFaces && !phoneDetected
 
   function handleStart() {
-    setIsStarted(true)
+    navigate('/share-screen')
   }
 
   function handleExit() {
