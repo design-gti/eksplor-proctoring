@@ -31,7 +31,8 @@ export default function Soal() {
   `
 
   return (
-    <Box sx={{ minHeight: '100vh', background: bgGradient, bgcolor: 'background.default', display: 'flex', justifyContent: 'center', py: 4, px: 2 }}>
+    
+      <Box sx={{ minHeight: '100vh', background: bgGradient, bgcolor: 'background.default', display: 'flex', justifyContent: 'center', py: 4, px: 2 }}>
       <Box sx={{ maxWidth: 'lg', width: '100%' }}>
         <Card sx={{
           background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)',

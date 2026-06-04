@@ -407,11 +407,13 @@ export default function MyDevices() {
             </Box>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button variant="contained" endIcon={<ArrowForward />} onClick={() => navigate('/deviceSetup')}>
-              Lanjut ke Persiapan Perangkat
-            </Button>
-          </Box>
+          {allOk && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button variant="contained" endIcon={<ArrowForward />} onClick={() => navigate('/deviceSetup')}>
+                Lanjut ke Persiapan Perangkat
+              </Button>
+            </Box>
+          )}
         </CardContent>
       </Card>
     </Box>

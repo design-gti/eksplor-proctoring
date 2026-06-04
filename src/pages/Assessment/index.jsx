@@ -235,76 +235,9 @@ export default function Assessment() {
                         </Alert>
                       )}
 
-                      {/* Demo controls for slicing */}
-                      <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
-                        <Button size="small" variant="outlined" onClick={() => { setFaceDetected(true); setFaceCount(1); setHasMultipleFaces(false); setFaceLoading(false) }}>
-                          Simulasi Wajah Terdeteksi
-                        </Button>
-                        <Button size="small" variant="outlined" color="error" onClick={() => { setFaceDetected(false); setFaceLoading(false) }}>
-                          Simulasi Tidak Terdeteksi
-                        </Button>
-                        <Button size="small" variant="outlined" color="warning" onClick={() => { setFaceDetected(true); setFaceCount(2); setHasMultipleFaces(true); setFaceLoading(false) }}>
-                          Simulasi Multi Wajah
-                        </Button>
-                      </Box>
                     </Box>
                   </Card>
 
-                  {/* HP Camera card */}
-                  <Card variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden', mt: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: hpConnected ? 'success.main' : 'info.main', px: 2.5, py: 1.5 }}>
-                      <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(255,255,255,0.2)' }}>
-                        <PhoneAndroid sx={{ fontSize: 16, color: 'white' }} />
-                      </Avatar>
-                      <Typography fontWeight={700} color="white" variant="body1">Kamera HP</Typography>
-                      <Chip
-                        label={hpConnected ? 'Terhubung' : 'Belum Terhubung'}
-                        size="small"
-                        sx={{ ml: 'auto', bgcolor: 'rgba(255,255,255,0.25)', color: 'white', fontWeight: 700 }}
-                      />
-                    </Box>
-                    <Box sx={{ px: 2.5, py: 2 }}>
-                      {hpConnected ? (
-                        <Stack spacing={1} alignItems="center">
-                          <Box sx={{ width: '100%', maxWidth: 200, aspectRatio: '16/9', bgcolor: '#000', borderRadius: 1.5, overflow: 'hidden', border: '2px solid', borderColor: 'success.main' }}>
-                            <video ref={hpVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          </Box>
-                          <Typography variant="caption" color="success.main" fontWeight={600}>Live preview kamera belakang HP</Typography>
-                          <Button size="small" variant="outlined" color="error" onClick={hpDisconnect}>Putuskan</Button>
-                        </Stack>
-                      ) : (
-                        <Stack spacing={1.5}>
-                          {hpStatus === 'waiting' && hpQrUrl ? (
-                            <Stack direction="row" spacing={2} alignItems="center">
-                              <Box sx={{ p: 1, bgcolor: 'white', borderRadius: 1.5, border: '1px solid', borderColor: 'warning.main', flexShrink: 0 }}>
-                                <QRCodeSVG value={hpQrUrl} size={80} />
-                              </Box>
-                              <Stack spacing={0.5}>
-                                <Chip label="Menunggu HP scan QR..." color="warning" size="small" />
-                                <Typography variant="caption" color="text.secondary">
-                                  Scan QR dengan HP untuk menghubungkan kamera belakang
-                                </Typography>
-                                <Button size="small" variant="outlined" color="error" onClick={hpDisconnect} sx={{ alignSelf: 'flex-start' }}>Batalkan</Button>
-                              </Stack>
-                            </Stack>
-                          ) : (
-                            <Stack spacing={0.75}>
-                              <Typography variant="caption" color="text.secondary">
-                                Hubungkan HP sebagai kamera pengawas sudut ruangan (opsional).
-                              </Typography>
-                              <Button size="small" variant="outlined" startIcon={<PhoneAndroid />} onClick={hpStartListening} sx={{ alignSelf: 'flex-start' }}>
-                                Hubungkan HP Sekarang
-                              </Button>
-                              <Stack direction="row" spacing={1}>
-                                <Button size="small" variant="text" color="success" onClick={hpSimulateConnect}>Demo: Terhubung</Button>
-                                <Button size="small" variant="text" color="error" onClick={hpSimulateDisconnect}>Demo: Terputus</Button>
-                              </Stack>
-                            </Stack>
-                          )}
-                        </Stack>
-                      )}
-                    </Box>
-                  </Card>
                 </Grid>
               </Grid>
 
