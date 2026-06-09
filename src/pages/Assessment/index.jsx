@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box, Card, CardContent, Typography, Button, Avatar, Alert, Chip,
-  CircularProgress, Stack, Fab, LinearProgress, TextField, Dialog,
-  DialogContent, DialogTitle
+  CircularProgress, Stack, Fab, LinearProgress, TextField, Tooltip,
+  IconButton
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import {
   Face, Fullscreen, FullscreenExit, Help, Quiz, Security,
   CheckCircle, Cancel, Logout, Warning, PhoneAndroid, Person,
-  ScreenShare, StopScreenShare, FiberManualRecord, PhotoCamera, Info
+  ScreenShare, StopScreenShare, FiberManualRecord, PhotoCamera, Info,
+  Videocam, VideocamOff, KeyboardArrowDown, KeyboardArrowUp
 } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { useTheme } from '@mui/material/styles'
@@ -52,7 +53,8 @@ export default function Assessment() {
   const { hasMultipleMonitors } = useMultipleMonitor()
   const {
     faceDetected, faceCount, hasMultipleFaces, loading: faceLoading,
-    setFaceDetected, setFaceCount, setHasMultipleFaces, setLoading: setFaceLoading
+    setFaceDetected, setFaceCount, setHasMultipleFaces, setLoading: setFaceLoading,
+    videoRef: laptopVideoRef, startCamera, stopCamera,
   } = useFaceDetection({ enabled: true })
   const { phoneDetected } = usePhoneDetection({ enabled: true })
 
@@ -67,8 +69,22 @@ export default function Assessment() {
   // Secondary camera
   const {
     connectionStatus: hpStatus, remoteVideoRef: hpVideoRef,
+    simulateConnect: hpSimulateConnect, simulateDisconnect: hpSimulateDisconnect,
   } = useSecondaryCamera({ enabled: true })
   const hpConnected = hpStatus === 'connected'
+
+  // Camera monitor panel state
+  const [camPanelOpen, setCamPanelOpen] = useState(true)
+
+  // ── Start/stop laptop camera for PiP panel ────────────────────────────────
+  useEffect(() => {
+    if (step === STEP_ACTIVE) {
+      startCamera()
+    } else {
+      stopCamera()
+    }
+    return () => stopCamera()
+  }, [step])
 
   // ── Timer ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -492,18 +508,167 @@ export default function Assessment() {
         )}
       </Box>
 
-      {/* HP Camera PIP */}
-      {step === STEP_ACTIVE && hpConnected && (
+      {/* ── Camera Monitor Panel ────────────────────────────────────────────── */}
+      {step === STEP_ACTIVE && (
         <Box sx={{
-          position: 'fixed', bottom: 80, left: 24, zIndex: 999,
-          borderRadius: 2, overflow: 'hidden', border: '2px solid', borderColor: 'success.main',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          position: 'fixed', bottom: 100, right: 24, zIndex: 999,
+          width: 220,
+          borderRadius: 2.5,
+          overflow: 'hidden',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          bgcolor: 'rgba(15,20,30,0.92)',
+          backdropFilter: 'blur(12px)',
         }}>
-          <video ref={hpVideoRef} autoPlay muted playsInline
-            style={{ width: 160, height: 90, objectFit: 'cover', display: 'block' }} />
-          <Box sx={{ position: 'absolute', top: 4, left: 4 }}>
-            <Chip label="Kamera HP" size="small" color="success" sx={{ fontSize: 10, height: 20, fontWeight: 700 }} />
+          {/* Panel header */}
+          <Box sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            px: 1.5, py: 0.75,
+            bgcolor: 'rgba(255,255,255,0.06)',
+            borderBottom: camPanelOpen ? '1px solid rgba(255,255,255,0.08)' : 'none',
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Videocam sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', letterSpacing: 0.5 }}>
+                MONITOR KAMERA
+              </Typography>
+            </Box>
+            <Tooltip title={camPanelOpen ? 'Sembunyikan' : 'Tampilkan'}>
+              <IconButton size="small" onClick={() => setCamPanelOpen(o => !o)}
+                sx={{ color: 'rgba(255,255,255,0.6)', p: 0.25, '&:hover': { color: 'white' } }}>
+                {camPanelOpen ? <KeyboardArrowDown sx={{ fontSize: 16 }} /> : <KeyboardArrowUp sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
           </Box>
+
+          {camPanelOpen && (
+            <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+
+              {/* Laptop camera tile */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.4 }}>
+                    KAMERA LAPTOP
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22c55e', animation: 'blink 2s infinite' }} />
+                    <Typography sx={{ fontSize: 9, color: '#22c55e', fontWeight: 700 }}>LIVE</Typography>
+                  </Box>
+                </Box>
+                <Box sx={{
+                  position: 'relative', borderRadius: 1.5, overflow: 'hidden',
+                  bgcolor: '#0d0d0d', border: '1px solid rgba(255,255,255,0.1)',
+                  aspectRatio: '4/3',
+                }}>
+                  <video
+                    ref={laptopVideoRef}
+                    autoPlay muted playsInline
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'cover',
+                      display: 'block', transform: 'scaleX(-1)', /* mirror */
+                    }}
+                  />
+                  {/* Face status overlay */}
+                  <Box sx={{
+                    position: 'absolute', bottom: 4, left: 0, right: 0,
+                    display: 'flex', justifyContent: 'center',
+                  }}>
+                    <Chip
+                      size="small"
+                      icon={faceDetected ? <CheckCircle sx={{ fontSize: '10px !important' }} /> : <Cancel sx={{ fontSize: '10px !important' }} />}
+                      label={faceDetected ? (hasMultipleFaces ? `${faceCount} wajah` : '1 wajah') : 'Wajah?'}
+                      color={faceDetected && !hasMultipleFaces ? 'success' : 'error'}
+                      sx={{
+                        height: 18, fontSize: 9, fontWeight: 700,
+                        bgcolor: faceDetected && !hasMultipleFaces ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)',
+                        color: 'white', border: 'none',
+                        '& .MuiChip-label': { px: 0.75 },
+                        '& .MuiChip-icon': { color: 'white !important', ml: '4px' },
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Divider */}
+              <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.07)' }} />
+
+              {/* HP camera tile */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.4 }}>
+                    KAMERA HP
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                    <Box sx={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      bgcolor: hpConnected ? '#22c55e' : '#f59e0b',
+                      animation: hpConnected ? 'blink 2s infinite' : 'none',
+                    }} />
+                    <Typography sx={{ fontSize: 9, fontWeight: 700, color: hpConnected ? '#22c55e' : '#f59e0b' }}>
+                      {hpConnected ? 'LIVE' : 'OFFLINE'}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{
+                  position: 'relative', borderRadius: 1.5, overflow: 'hidden',
+                  bgcolor: '#0d0d0d', border: `1px solid ${hpConnected ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                  aspectRatio: '4/3',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {hpConnected ? (
+                    <video
+                      ref={hpVideoRef}
+                      autoPlay muted playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  ) : (
+                    <Box sx={{ textAlign: 'center', px: 1 }}>
+                      <PhoneAndroid sx={{ fontSize: 28, color: 'rgba(255,255,255,0.2)', mb: 0.5 }} />
+                      <Typography sx={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', lineHeight: 1.3 }}>
+                        Kamera HP belum<br />terhubung
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Simulate connect button — hanya untuk demo */}
+                  {!hpConnected && (
+                    <Box sx={{ position: 'absolute', bottom: 4, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
+                      <Button
+                        size="small"
+                        onClick={hpSimulateConnect}
+                        sx={{
+                          fontSize: 9, py: 0.25, px: 1, minWidth: 0, height: 18,
+                          bgcolor: 'rgba(245,158,11,0.85)', color: 'white',
+                          borderRadius: 1, fontWeight: 700, lineHeight: 1,
+                          '&:hover': { bgcolor: 'rgba(245,158,11,1)' },
+                        }}
+                      >
+                        Simulasi
+                      </Button>
+                    </Box>
+                  )}
+                  {hpConnected && (
+                    <Box sx={{ position: 'absolute', bottom: 4, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
+                      <Button
+                        size="small"
+                        onClick={hpSimulateDisconnect}
+                        sx={{
+                          fontSize: 9, py: 0.25, px: 1, minWidth: 0, height: 18,
+                          bgcolor: 'rgba(239,68,68,0.7)', color: 'white',
+                          borderRadius: 1, fontWeight: 700, lineHeight: 1,
+                          '&:hover': { bgcolor: 'rgba(239,68,68,0.9)' },
+                        }}
+                      >
+                        Putuskan
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+
+            </Box>
+          )}
         </Box>
       )}
 
