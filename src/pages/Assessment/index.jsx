@@ -76,15 +76,11 @@ export default function Assessment() {
   // Camera monitor panel state
   const [camPanelOpen, setCamPanelOpen] = useState(true)
 
-  // ── Start/stop laptop camera for PiP panel ────────────────────────────────
+  // ── Start laptop camera on mount, stop on unmount ────────────────────────
   useEffect(() => {
-    if (step === STEP_ACTIVE) {
-      startCamera()
-    } else {
-      stopCamera()
-    }
+    startCamera()
     return () => stopCamera()
-  }, [step])
+  }, [])
 
   // ── Timer ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -132,8 +128,9 @@ export default function Assessment() {
     return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
   }
 
-  const canProceedToScreen = isFullscreen && !faceLoading && faceDetected && !hasMultipleFaces && !phoneDetected
-  const canStartAssessment = screenActive
+  // Demo mode: always allow proceeding (validation logic dikerjakan engineer)
+  const canProceedToScreen = true
+  const canStartAssessment = true
 
   function handleExit() {
     const ok = window.confirm('Keluar dari assessment? Semua progres akan hilang.')
@@ -225,43 +222,143 @@ export default function Assessment() {
                   </Card>
                 </Grid>
 
-                {/* Right: Camera status */}
+                {/* Right: Camera cards stacked */}
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <Card variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'warning.main', px: 2.5, py: 2 }}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(255,255,255,0.2)' }}>
-                        <Face sx={{ fontSize: 18, color: 'white' }} />
-                      </Avatar>
-                      <Typography fontWeight={700} color="white">Status Kamera</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 3, px: 3 }}>
-                      {faceLoading ? (
-                        <CircularProgress size={60} thickness={5} />
-                      ) : faceDetected ? (
-                        <>
-                          <Avatar sx={{ width: 70, height: 70, bgcolor: alpha(theme.palette.success.main, 0.9), animation: 'pulse 2s infinite' }}>
-                            <Face sx={{ fontSize: 36, color: 'white' }} />
-                          </Avatar>
-                          <Typography variant="h6" fontWeight={700} color="success.main">Wajah Terdeteksi</Typography>
-                          {hasMultipleFaces && <Alert severity="error">Terdeteksi {faceCount} wajah. Hanya boleh ada 1 wajah.</Alert>}
-                        </>
-                      ) : (
-                        <>
-                          <Avatar sx={{ width: 70, height: 70, bgcolor: alpha(theme.palette.error.main, 0.9), animation: 'attention 1.5s infinite' }}>
-                            <Face sx={{ fontSize: 36, color: 'white' }} />
-                          </Avatar>
-                          <Typography variant="h6" fontWeight={700} color="error.main">Wajah Tidak Terdeteksi</Typography>
-                          <Alert severity="warning" variant="outlined">Posisikan wajah Anda dengan jelas di depan kamera</Alert>
-                        </>
-                      )}
+                  <Stack spacing={2}>
+
+                    {/* Status Kamera Laptop */}
+                    <Card variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'warning.main', px: 2.5, py: 1.5 }}>
+                        <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(255,255,255,0.2)' }}>
+                          <Face sx={{ fontSize: 16, color: 'white' }} />
+                        </Avatar>
+                        <Typography fontWeight={700} color="white">Kamera Laptop</Typography>
+                        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#fff', animation: 'blink 2s infinite' }} />
+                          <Typography variant="caption" color="white" fontWeight={700} sx={{ fontSize: 10 }}>LIVE</Typography>
+                        </Box>
+                      </Box>
+
+                      {/* Live webcam feed */}
+                      <Box sx={{ position: 'relative', bgcolor: '#111', aspectRatio: '4/3', overflow: 'hidden' }}>
+                        <video
+                          ref={laptopVideoRef}
+                          autoPlay muted playsInline
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }}
+                        />
+                        {/* Face detection status badge */}
+                        <Box sx={{ position: 'absolute', bottom: 8, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
+                          {faceLoading ? (
+                            <Chip
+                              icon={<CircularProgress size={12} sx={{ color: 'white !important' }} />}
+                              label="Mendeteksi wajah..."
+                              size="small"
+                              sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: 'white', fontWeight: 600, fontSize: 10, height: 22, backdropFilter: 'blur(4px)' }}
+                            />
+                          ) : faceDetected && !hasMultipleFaces ? (
+                            <Chip
+                              icon={<CheckCircle sx={{ fontSize: '12px !important', color: '#22c55e !important' }} />}
+                              label="1 wajah terdeteksi"
+                              size="small"
+                              sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#22c55e', fontWeight: 700, fontSize: 10, height: 22, backdropFilter: 'blur(4px)' }}
+                            />
+                          ) : hasMultipleFaces ? (
+                            <Chip
+                              icon={<Warning sx={{ fontSize: '12px !important', color: '#f59e0b !important' }} />}
+                              label={`${faceCount} wajah terdeteksi`}
+                              size="small"
+                              sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#f59e0b', fontWeight: 700, fontSize: 10, height: 22, backdropFilter: 'blur(4px)' }}
+                            />
+                          ) : (
+                            <Chip
+                              icon={<Cancel sx={{ fontSize: '12px !important', color: '#ef4444 !important' }} />}
+                              label="Wajah tidak terdeteksi"
+                              size="small"
+                              sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#ef4444', fontWeight: 700, fontSize: 10, height: 22, backdropFilter: 'blur(4px)' }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+
                       {phoneDetected && (
-                        <Alert severity="error" icon={<PhoneAndroid />}>
-                          <Typography variant="body2" fontWeight={600}>Ponsel Terdeteksi!</Typography>
-                          <Typography variant="caption">Harap jauhkan ponsel dari area ujian</Typography>
+                        <Alert severity="error" icon={<PhoneAndroid />} sx={{ borderRadius: 0, py: 0.75 }}>
+                          <Typography variant="caption" fontWeight={600}>Ponsel Terdeteksi! Harap jauhkan dari area ujian.</Typography>
                         </Alert>
                       )}
-                    </Box>
-                  </Card>
+                    </Card>
+
+                    {/* Kamera HP */}
+                    <Card variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'primary.main', px: 2.5, py: 1.5 }}>
+                        <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(255,255,255,0.2)' }}>
+                          <PhoneAndroid sx={{ fontSize: 16, color: 'white' }} />
+                        </Avatar>
+                        <Typography fontWeight={700} color="white">Kamera HP</Typography>
+                        <Box sx={{ ml: 'auto' }}>
+                          <Chip
+                            size="small"
+                            label={hpConnected ? 'Terhubung' : 'Tidak Terhubung'}
+                            sx={{
+                              height: 20, fontSize: 10, fontWeight: 700,
+                              bgcolor: hpConnected ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.15)',
+                              color: hpConnected ? '#86efac' : 'rgba(255,255,255,0.8)',
+                              border: 'none',
+                            }}
+                          />
+                        </Box>
+                      </Box>
+
+                      <Box sx={{ position: 'relative', bgcolor: '#0d1117', aspectRatio: '4/3', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {hpConnected ? (
+                          <>
+                            <video
+                              ref={hpVideoRef}
+                              autoPlay muted playsInline
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                            <Box sx={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 0.5,
+                              bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, px: 1, py: 0.4 }}>
+                              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22c55e', animation: 'blink 1.5s infinite' }} />
+                              <Typography sx={{ fontSize: 9, color: '#22c55e', fontWeight: 700 }}>LIVE</Typography>
+                            </Box>
+                          </>
+                        ) : (
+                          <Box sx={{ textAlign: 'center', px: 3, py: 2 }}>
+                            <Box sx={{
+                              width: 52, height: 52, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.15)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1.5,
+                            }}>
+                              <PhoneAndroid sx={{ fontSize: 26, color: 'rgba(255,255,255,0.25)' }} />
+                            </Box>
+                            <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', mb: 1.5, lineHeight: 1.4 }}>
+                              Hubungkan HP sebagai<br />kamera kedua proctoring
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={hpSimulateConnect}
+                              sx={{
+                                fontSize: 11, py: 0.5, px: 2,
+                                color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.2)',
+                                '&:hover': { borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.05)' },
+                              }}
+                            >
+                              Simulasi Hubungkan
+                            </Button>
+                          </Box>
+                        )}
+                      </Box>
+
+                      {hpConnected && (
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2, py: 1, bgcolor: alpha(theme.palette.success.main, 0.06) }}>
+                          <Button size="small" color="error" onClick={hpSimulateDisconnect} sx={{ fontSize: 11 }}>
+                            Putuskan
+                          </Button>
+                        </Box>
+                      )}
+                    </Card>
+
+                  </Stack>
                 </Grid>
               </Grid>
 
@@ -281,14 +378,6 @@ export default function Assessment() {
                     Mulai Assessment
                   </Button>
                 </Stack>
-                {!canProceedToScreen && (
-                  <Alert severity="warning" sx={{ width: 'fit-content', borderRadius: 2 }}>
-                    {!isFullscreen ? 'Aktifkan fullscreen untuk melanjutkan'
-                      : !faceDetected ? 'Wajah Anda harus terdeteksi untuk memulai assessment'
-                      : hasMultipleFaces ? 'Hanya boleh ada satu wajah yang terdeteksi'
-                      : 'Ponsel terdeteksi. Harap jauhkan ponsel dari area ujian'}
-                  </Alert>
-                )}
               </Box>
             </CardContent>
           </Card>
