@@ -256,7 +256,7 @@ export default function DeviceSetup() {
           </Button>
           <Button variant="contained" endIcon={<ArrowForward />}
             onClick={() => setActiveStep(3)}>
-            {connectionStatus === 'connected' ? 'Lanjutkan' : 'Lanjutkan Tanpa HP'}
+            Lanjut
           </Button>
         </Stack>
       </Box>
