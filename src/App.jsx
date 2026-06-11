@@ -12,7 +12,7 @@ import PhoneCameraShowcase from './pages/PhoneCameraShowcase'
 import Navbar from './components/Navbar'
 
 // Pages that should NOT show the navbar (phone-only pages)
-const NO_NAVBAR_ROUTES = ['/phone-camera', '/phone-showcase']
+const NO_NAVBAR_ROUTES = ['/phone-camera', '/phone-showcase', '/soal']
 
 function AppLayout() {
   const location = useLocation()

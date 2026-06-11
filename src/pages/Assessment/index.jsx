@@ -450,7 +450,7 @@ export default function Assessment() {
                   <Chip icon={<CheckCircle />} label="Screen sharing aktif — Recording berjalan" color="success" sx={{ alignSelf: 'flex-start', fontWeight: 700 }} />
                   <Stack direction="row" spacing={2}>
                     <Button variant="contained" color="primary" size="large" startIcon={<Quiz />}
-                      onClick={() => setStep(STEP_ACTIVE)}
+                      onClick={() => navigate('/soal')}
                       sx={{ borderRadius: 2, py: 1.5, px: 4, fontWeight: 700 }}>
                       Lanjutkan ke Soal
                     </Button>
@@ -459,6 +459,17 @@ export default function Assessment() {
                     </Button>
                   </Stack>
                 </Stack>
+              )}
+
+              {/* Demo bypass — langsung ke soal tanpa screen share */}
+              {!screenActive && screenStatus !== 'requesting' && (
+                <Box sx={{ mt: 1 }}>
+                  <Button variant="text" size="small" color="secondary"
+                    onClick={() => navigate('/soal')}
+                    sx={{ fontSize: 12 }}>
+                    Lewati (Demo) →
+                  </Button>
+                </Box>
               )}
 
               {screenStatus === 'stopped' && (

@@ -56,14 +56,14 @@ function ToggleSwitch({ on, onChange }) {
       onClick={() => onChange(!on)}
       sx={{
         width: 40, height: 20, borderRadius: 10, cursor: 'pointer', position: 'relative',
-        bgcolor: on ? '#016699' : '#CED4DA', transition: 'background-color 0.2s',
+        bgcolor: on ? '#016699' : '#E03131', transition: 'background-color 0.2s',
         flexShrink: 0,
       }}
     >
       <Box sx={{
         position: 'absolute', top: 2, left: on ? 22 : 2,
         width: 16, height: 16, borderRadius: '50%', bgcolor: 'white',
-        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
       }} />
     </Box>
   )
@@ -183,8 +183,8 @@ export default function Soal() {
         {/* Right — Answer options */}
         <Box sx={{
           flex: 1, bgcolor: '#F8F9FA', overflow: 'auto',
-          display: 'flex', flexDirection: 'column', justifyContent: 'center',
-          px: '48px', py: '32px', gap: 1,
+          display: 'flex', flexDirection: 'column',
+          px: '48px', pt: '170px', pb: '32px',
         }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 624 }}>
             {question.options.map(opt => {
@@ -198,7 +198,7 @@ export default function Soal() {
                     bgcolor: isSelected ? '#E7F5FF' : 'white',
                     border: '1px solid',
                     borderColor: isSelected ? '#016699' : '#D6E6FF',
-                    borderRadius: '8px', p: '12px', height: 64,
+                    borderRadius: '8px', p: '12px', minHeight: 64,
                     cursor: 'pointer',
                     boxShadow: '0px 4px 12px rgba(0,0,0,0.04)',
                     transition: 'all 0.15s',
